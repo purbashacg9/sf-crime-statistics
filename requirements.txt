@@ -1,0 +1,5 @@
+findspark
+pyspark
+python-dateutil
+pathlib
+kafka-python
