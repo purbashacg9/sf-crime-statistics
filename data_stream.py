@@ -9,8 +9,7 @@ def format_timestamp(ts):
     """
     Given a timestamp of the form - "2018-12-31T23:57:00.000", return a 
     datetime.datetime object
-    """
-    ## TODO add validation for timestamp string 
+    """ 
     if ts:
         return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.000")
 
@@ -48,7 +47,7 @@ def run_spark_job(spark):
         .format("kafka") \
         .option("kafka.bootstrap.servers", "localhost:9092") \
         .option("subscribe", "org.udacity.assignment.crime-statistics") \
-        .option("maxOffsetsPerTrigger", 200) \
+        .option("maxOffsetsPerTrigger", 100) \
         .option("startingOffsets", "earliest") \
         .option("stopGracefullyOnShutdown", "true") \
         .load() 
@@ -67,61 +66,63 @@ def run_spark_job(spark):
     # TODO select original_crime_type_name and disposition
     distinct_table = service_table\
                     .select("original_crime_type_name", "disposition", format_timestamp_udf("call_date_time").alias("call_date_time"))
-    
-#     query = distinct_table\
-#             .writeStream\
-#             .format("console")\
-#             .outputMode("append") \
-#             .trigger(once=True)\
-#             .start() 
-#     query.awaitTermination()
 
     # count the number of original crime type
-    # TODO add .withWatermark("call_date_time", '60 minutes')\
+    # TODO pcg what is the impact of slideDuration  slideDuration="5 minutes"
+    # TODO pcg if I don't sort by count, will the window ordering make more sense - .sort("count_original_crime_type", ascending=False) YEP
     agg_df = (
         distinct_table\
-        .withWatermark('call_date_time', '5 minutes')
+        .withWatermark('call_date_time', '60 minutes')
         .groupBy
         (
-            distinct_table.original_crime_type_name, 
-            psf.window(distinct_table.call_date_time, "15 minutes", slideDuration="5 minutes")
+            distinct_table.original_crime_type_name, distinct_table.disposition,
+            psf.window(distinct_table.call_date_time, "15 minutes", "5 minutes")
         )
         .count()
-        .select("original_crime_type_name", "window", psf.col("count").alias("count_original_crime_type"))
-        .sort("count_original_crime_type", ascending=False)
+        .select("original_crime_type_name", "disposition", "window", psf.col("count").alias("count_original_crime_type"))
     )            
-
     
     # TODO Q1. Submit a screen shot of a batch ingestion of the aggregation
     # TODO write output stream
+    #TODO pcg change output mode when processingTime is added. 
+    # TODO pcg check with trigger = continous 
     query = agg_df\
             .writeStream\
+            .queryName("count_by_crime_type")\
             .format("console")\
             .outputMode("complete") \
-            .trigger(processingTime="15 minutes")\
+            .trigger(processingTime="2 minutes")\
             .option("truncate", "false")\
             .start() 
     
 #processingTime="15 minutes"  once=True
-#      #query = streamingCountsDF.writeStream.outputMode("complete").format("console").start()
-#     # TODO attach a ProgressReporter
-    query.awaitTermination()
+    # TODO attach a ProgressReporter - Having 2 progress reporters in the code prevents the join query from running. 
+    # So I commented this and retained the one for join_query.
+    #query.awaitTermination()
 
-#     # TODO get the right radio code json path
-#     radio_code_json_filepath = "./radio_code.json"
-#     radio_code_df = spark.read.json(radio_code_json_filepath, multiLine=True)
+    # TODO get the right radio code json path
+    radio_code_json_filepath = "./radio_code.json"
+    radio_code_df = spark.read.json(radio_code_json_filepath, multiLine=True)
 
-#     # clean up your data so that the column names match on radio_code_df and agg_df
-#     # we will want to join on the disposition code
+    # clean up your data so that the column names match on radio_code_df and agg_df
+    # we will want to join on the disposition code
 
-#     # TODO rename disposition_code column to disposition
-#     radio_code_df = radio_code_df.withColumnRenamed("disposition_code", "disposition")
+    # TODO rename disposition_code column to disposition
+    radio_code_df = radio_code_df.withColumnRenamed("disposition_code", "disposition")
 
-#     # TODO join on disposition column
-#     join_query = agg_df.join(radio_code_df, agg_df.disposition=radio_code_df.disposition, 'inner')
+    # TODO join on disposition column
+    # TODO pcg removing this gives results but is this right? .withWatermark('call_date_time', '60 minutes')\
+    join_query = agg_df.join(radio_code_df, "disposition", 'left_outer')\
+        .select("original_crime_type_name", "description", "window","count_original_crime_type")\
+        .writeStream\
+        .queryName("count_by_crime_type_with_disposition")\
+        .format("console")\
+        .outputMode("complete") \
+        .trigger(processingTime="2 minutes")\
+        .option("truncate", "false")\
+        .start() 
 
-
-#     join_query.awaitTermination()
+    join_query.awaitTermination()
 
 
 if __name__ == "__main__":
@@ -133,8 +134,10 @@ if __name__ == "__main__":
         .master("local[*]") \
         .appName("KafkaSparkStructuredStreaming") \
         .getOrCreate()
-    #spark.conf.set("spark.sql.shuffle.partitions", "1")
-    #spark.sparkContext.setLogLevel("WARN") 
+    spark.conf.set("spark.sql.shuffle.partitions", "1")
+    spark.conf.set("spark.executor.memory", "100m")
+    spark.conf.set("spark.eventLog.enabled", False)
+    spark.conf.set("spark.default.parallelism", 4)
 
     logger.info("Spark started")
 
