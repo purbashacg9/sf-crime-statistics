@@ -11,6 +11,20 @@ The goal of the project was to provide statistical analyses of the data using Ap
     Kafka build with Scala 2.11.x
     Python 3.6.x or 3.7.x
 
+## Screenshots 
+The screenshots.zip has all the screenshots requested in the project. 
+
+- Screenshot of kafka-consumer-console output - kafka-console-consumer-output.png
+
+- Screenshot of progress reporter after executing a Spark job - 
+    - Progress reporter and aggregated results - aggregation_by_crime_type_data_progress_report.png
+    - Progress reported and aggregated results with join - aggregation_by_crime_type_join_by_disposition_data_progress_report.png 
+
+- Screenshot of the Spark Streaming UI as the streaming continues - Multiple files 
+    - Screenshot of Executors tab - SparkUI-Executor.png
+    - Screenshot of Stages tab - SparkUI-Stages.png 
+    - Screenshot of Jobs tab - SparkUI-Jobs.png
+
 ## Performance Tuning of Spark Environment
  
 As part of the project, we were asked to study the effect of modifying configuration parameters for Spark sessions to understand their impact on the throughput and latency of the data. Here are the answers to the questions posed-  
